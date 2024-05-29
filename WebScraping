@@ -1,0 +1,52 @@
+Sub WebScraping()
+
+Dim Co_Id As Integer: Co_Id = Worksheets(1).Range("B1").Value 'stock code of the company we are searching for 
+Dim StartYear As Integer: StartYear = Worksheets(1).Range("B2").Value
+Dim LatestYear As Integer: LatestYear = Year(Date) - 1 'substract 1 from the current year, and use it as terminating condition for the loop
+Dim YearDif As Integer: YearDif = LatestYear - StartYear
+Dim EachYear As Integer
+Dim SSeason As Integer: SSeason = Worksheets(1).Range("B3").Value
+Dim WebAdress, DesCell As String
+Dim fsQtr As Worksheet: Set fsQtr = Worksheets(2) 'Raw data of financial statement will be downloaded to the second worksheet
+fsQtr.Cells.Clear
+Worksheets(3).UsedRange.Offset(0, 1).ClearContents 'Clear everything in the third worksheet, except for Column A(which is the financial item name)
+
+For EachYear = StartYear To LatestYear
+  WebAddress = "URL;https://mops.twse.com.tw/server-java/t164sb01?step=1&CO_ID=" & Co_Id & "&SYEAR=" & EachYear & "&SSEASON=" & SSeason & "&REPORT_ID=C#StatementOfComprehensiveIncome"
+  DesCell = Cells(1, 1 + (EachYear - StartYear) * 3).Address ' spare 3 columns for each year's financial statement
+  With fsQtr.QueryTables.Add(Connection:=WebAddress, Destination:=fsQtr.Range(DesCell))
+  .FieldNames = True
+  .PreserveFormatting = True
+  .RowNumbers = False
+  .WebSelectionType = xlAllTables
+  .Refresh BackgroundQuery:=False
+  End With
+  Worksheets(3).Cells(1, 2 + (EachYear - StartYear)).Value = EachYear 'Add the year label in the third worksheet
+Next EachYear
+
+Columns().ColumnWidth = 15
+
+Dim cell As Range
+Dim targetValues As Variant
+Dim i As Long, colIndex As Long
+Dim j As Long: j = 2
+Dim outputRow As Long
+Dim found As Boolean
+
+targetValues = Array(" 資產總計 Total assets", "  權益總額  Total equity", "淨收益Net revenue", " 營業費用合計 Total operating expenses", "本期淨利（淨損）Profit (loss)") ' items we are searching for
+For colIndex = 2 To (YearDif + 1) * 3 - 1 Step 3 'start the query from Column 2, increment by 3 each time
+  outputRow = 2 ' by default, we start printing from row 2
+  For i = LBound(targetValues) To UBound(targetValues) ' Loop through each target item
+    found = False
+    Set cell = Worksheets(2).Columns(colIndex).Find(What:=targetValues(i), LookIn:=xlValues, LookAt:=xlWhole, SearchOrder:=xlByColumns)
+    If Not cell Is Nothing Then 'found the exactly same item e.g. Total asset
+        lngColumn = cell.Column + 1 'get the item's financial number
+        Worksheets(3).Cells(outputRow, j).Value = Worksheets(2).Cells(cell.Row, lngColumn).Value 'copy it into the third worksheet
+        outputRow = outputRow + 1 'continue to print the next financial number in the same column
+        found = True
+    End If
+  Next i
+  j = j + 1 'after finding all the 5 items, add 1 to the column
+Next colIndex 
+
+End Sub
