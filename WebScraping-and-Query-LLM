@@ -1,0 +1,88 @@
+pip install requests beautifulsoup4 pandas openai
+
+import requests
+from bs4 import BeautifulSoup
+import pandas as pd
+import openai
+
+openai.api_key = 'your-openai-api-key'
+
+def fetch_financial_data(stock_code, start_year, end_year, season):
+    """
+    Scrapes financial data for a given stock code, year range, and season.
+    """
+    base_url = "https://mops.twse.com.tw/server-java/t164sb01"
+    target_values = [
+        "資產總計 Total assets",
+        "權益總額  Total equity",
+        "淨收益Net revenue",
+        "營業費用合計 Total operating expenses",
+        "本期淨利（淨損）Profit (loss)"
+    ]
+    all_data = []
+
+    for year in range(start_year, end_year + 1):
+        # Construct the query URL
+        params = {
+            "step": "1",
+            "CO_ID": stock_code,
+            "SYEAR": year,
+            "SSEASON": season,
+            "REPORT_ID": "C#StatementOfComprehensiveIncome"
+        }
+        response = requests.get(base_url, params=params)
+        if response.status_code != 200:
+            print(f"Failed to fetch data for {year}. Status code: {response.status_code}")
+            continue
+        
+        soup = BeautifulSoup(response.text, 'html.parser')
+        tables = soup.find_all('table')
+        
+        for table in tables:
+            rows = table.find_all('tr')
+            for row in rows:
+                cols = [col.text.strip() for col in row.find_all('td')]
+                if cols and any(target in cols[0] for target in target_values):
+                    all_data.append([year] + cols[:2])  # Year + Metric Name + Value
+    
+    # Convert to DataFrame
+    df = pd.DataFrame(all_data, columns=["Year", "Metric", "Value"])
+    return df
+
+def process_financial_data(df):
+    """
+    Processes the financial data using an LLM for trend analysis.
+    """
+    # Group and summarize data for input to LLM
+    summary = df.groupby("Metric")["Value"].apply(lambda x: list(x)).to_dict()
+    
+    # Prepare input for the LLM
+    prompt = f"Analyze the following financial metrics for trends and performance:\n\n{summary}\n\nAnalysis:"
+    
+    # Process the input financial metrics with OpenAI LLM
+    response = openai.Completion.create(
+        engine="text-davinci-003", 
+        prompt=prompt,
+        max_tokens=500,
+        temperature=0.7
+    )
+    return response.choices[0].text.strip()
+
+# Demo Example 
+stock_code = 2883
+start_year = 2018
+end_year = 2022
+season = 1
+
+# Fetch financial data
+financial_data = fetch_financial_data(stock_code, start_year, end_year, season)
+print("Scraped Financial Data:")
+print(financial_data)
+
+# Analyze data using LLM
+if not financial_data.empty:
+    analysis = process_financial_data(financial_data)
+    print("\nTrend Analysis by LLM:")
+    print(analysis)
+else:
+    print("No financial data was scraped. Please check your search criteria.")
